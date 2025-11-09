@@ -2,8 +2,6 @@ let currentData = null;
 let currentFilename = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadFiles();
-    
     document.getElementById('searchForm').addEventListener('submit', handleSearch);
     document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
 });
@@ -33,7 +31,6 @@ async function handleSearch(e) {
         currentData = data;
         currentFilename = data.saved_filename;
         displayResults(data);
-        loadFiles();
         
     } catch (error) {
         resultsDiv.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
@@ -123,71 +120,3 @@ async function downloadCsv() {
     }
 }
 
-async function loadFiles() {
-    try {
-        const response = await fetch('/files');
-        const files = await response.json();
-        
-        let filesHtml = '';
-        files.forEach(file => {
-            filesHtml += `
-                <div class="file-item">
-                    <div class="file-info">
-                        <div class="file-name">${file.file_name}</div>
-                        <div class="file-meta">Modified: ${file.last_modified} | Size: ${file.file_size_kb} KB</div>
-                    </div>
-                    <div class="file-actions">
-                        <button onclick="loadFile('${file.file_name}')" class="btn">Load</button>
-                        <button onclick="downloadFile('${file.file_name}')" class="btn btn-success">CSV</button>
-                    </div>
-                </div>
-            `;
-        });
-        
-        document.getElementById('filesList').innerHTML = filesHtml || '<p>No saved files found.</p>';
-    } catch (error) {
-        console.error('Error loading files:', error);
-        document.getElementById('filesList').innerHTML = '<p class="error">Error loading files.</p>';
-    }
-}
-
-async function loadFile(filename) {
-    try {
-        const response = await fetch('/load/' + filename);
-        const data = await response.json();
-        
-        if (data.error) {
-            alert('Error: ' + data.error);
-            return;
-        }
-        
-        currentData = data;
-        currentFilename = filename;
-        displayResults(data);
-        document.getElementById('results').style.display = 'block';
-        document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
-    } catch (error) {
-        alert('Error loading file: ' + error.message);
-    }
-}
-
-async function downloadFile(filename) {
-    try {
-        const response = await fetch('/export/' + filename);
-        if (!response.ok) {
-            throw new Error('Export failed');
-        }
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename.replace('.json', '.csv');
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-    } catch (error) {
-        alert('Error downloading file: ' + error.message);
-    }
-}

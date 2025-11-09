@@ -18,21 +18,11 @@ class RedditUtils:
             os.makedirs(self.data_dir)
     
     def fetch_reddit_data(self, query, sort_method="top", time_period="month", post_limit=25):
-        encoded_query = quote(query)
-        search_url = f"{self.base_url}/search.json"
-        
-        request_params = {
-            "q": query,
-            "sort": sort_method,
-            "t": time_period,
-            "limit": min(post_limit, 100),
-            "raw_json": 1
-        }
+        search_url = f"https://www.reddit.com/search.json?q={quote(query)}"
         
         try:
             print(f"Fetching from: {search_url}")
-            print(f"Parameters: {request_params}")
-            response = requests.get(search_url, headers=self.headers, params=request_params)
+            response = requests.get(search_url, headers=self.headers)
             print(f"Response status: {response.status_code}")
             response.raise_for_status()
             data = response.json()
@@ -74,6 +64,19 @@ class RedditUtils:
             "text_content": raw_post_data.get("selftext", "")
         }
     
+    def is_post_relevant(self, post_data, search_query):
+        query_words = search_query.lower().split()
+        title_text = post_data.get("title", "").lower()
+        content_text = post_data.get("text_content", "").lower()
+        combined_text = f"{title_text} {content_text}"
+        
+        relevant_count = 0
+        for word in query_words:
+            if word in combined_text:
+                relevant_count += 1
+        
+        return relevant_count >= len(query_words) * 0.6
+    
     def extract_comment_data(self, raw_comment_data):
         return {
             "comment_author": raw_comment_data.get("author", "unknown"),
@@ -82,77 +85,52 @@ class RedditUtils:
             "comment_date": datetime.fromtimestamp(raw_comment_data.get("created_utc", 0)).strftime("%Y-%m-%d %H:%M:%S")
         }
     
-    def try_subreddit_searches(self, query, sort_method="top", time_period="month", post_limit=25):
-        popular_subreddits = ["AskReddit", "explainlikeimfive", "todayilearned", "news", "technology", "science", "education"]
-        
-        for subreddit in popular_subreddits:
-            try:
-                search_url = f"{self.base_url}/r/{subreddit}/search.json"
-                request_params = {
-                    "q": query,
-                    "restrict_sr": "1",
-                    "sort": sort_method,
-                    "t": time_period,
-                    "limit": min(post_limit, 25),
-                    "raw_json": 1
-                }
-                
-                print(f"Trying subreddit r/{subreddit}")
-                response = requests.get(search_url, headers=self.headers, params=request_params)
-                response.raise_for_status()
-                data = response.json()
-                
-                if data and 'data' in data and data['data']['children']:
-                    print(f"Found {len(data['data']['children'])} posts in r/{subreddit}")
-                    return data
-                
-                time.sleep(1.2)
-            except Exception as e:
-                print(f"Error searching r/{subreddit}: {e}")
-                continue
-        
-        return None
+
     
-    def process_search_results(self, search_query, max_posts=10, sort_by="top", time_range="month"):
-        print(f"Processing search for: {search_query}")
-        reddit_response = self.fetch_reddit_data(search_query, sort_by, time_range, max_posts)
-        
-        if not reddit_response or "data" not in reddit_response or not reddit_response["data"]["children"]:
-            print("No results from general search, trying subreddit-specific searches...")
-            reddit_response = self.try_subreddit_searches(search_query, sort_by, time_range, max_posts)
-        
-        if not reddit_response or "data" not in reddit_response:
-            print("No reddit response or no data key")
-            return self.create_empty_result(search_query)
-        
-        processed_posts = []
-        
-        for post_item in reddit_response["data"]["children"][:max_posts]:
-            if post_item["kind"] != "t3":
-                continue
+    def search(self, search_query, sort_by='hot', time_range='all'):
+        try:
+            if not search_query:
+                return self.create_empty_result("No search query provided")
+            
+            print(f"Processing search for: {search_query}")
+            reddit_response = self.fetch_reddit_data(search_query, sort_by, time_range, 25)
+            
+            if not reddit_response or "data" not in reddit_response:
+                print("No reddit response or no data key")
+                return self.create_empty_result(search_query)
+            
+            processed_posts = []
+            
+            for post_item in reddit_response["data"]["children"]:
+                if post_item["kind"] != "t3":
+                    continue
+                    
+                post_data = post_item.get("data", {})
+                processed_post = self.extract_post_data(post_data)
                 
-            post_data = post_item.get("data", {})
-            processed_post = self.extract_post_data(post_data)
+                post_comments = []
+                comments_response = self.fetch_post_comments(
+                    processed_post["subreddit"], 
+                    post_data.get("id", "")
+                )
+                
+                if comments_response and len(comments_response) > 1:
+                    for comment_item in comments_response[1]["data"]["children"]:
+                        if (comment_item["kind"] == "t1" and 
+                            comment_item.get("data", {}).get("body") not in ["[deleted]", "[removed]", ""]):
+                            
+                            comment_data = self.extract_comment_data(comment_item["data"])
+                            post_comments.append(comment_data)
+                
+                post_comments.sort(key=lambda x: x["comment_score"], reverse=True)
+                processed_post["top_comments"] = post_comments[:5]
+                processed_posts.append(processed_post)
             
-            post_comments = []
-            comments_response = self.fetch_post_comments(
-                processed_post["subreddit"], 
-                post_data.get("id", "")
-            )
-            
-            if comments_response and len(comments_response) > 1:
-                for comment_item in comments_response[1]["data"]["children"]:
-                    if (comment_item["kind"] == "t1" and 
-                        comment_item.get("data", {}).get("body") not in ["[deleted]", "[removed]", ""]):
-                        
-                        comment_data = self.extract_comment_data(comment_item["data"])
-                        post_comments.append(comment_data)
-            
-            post_comments.sort(key=lambda x: x["comment_score"], reverse=True)
-            processed_post["top_comments"] = post_comments[:5]
-            processed_posts.append(processed_post)
+            return self.create_final_result(search_query, processed_posts)
         
-        return self.create_final_result(search_query, processed_posts)
+        except Exception as e:
+            print(f"Error during search: {e}")
+            return self.create_empty_result(search_query)
     
     def create_empty_result(self, query):
         return {

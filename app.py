@@ -19,7 +19,7 @@ def search():
     time_filter = request.form.get('time_filter', 'month')
     
     try:
-        results = reddit_utils.process_search_results(query, num_posts, sort, time_filter)
+        results = reddit_utils.search(query, sort, time_filter)
         
         filename = reddit_utils.generate_safe_filename(query)
         reddit_utils.save_data_as_json(results, filename)
@@ -29,16 +29,7 @@ def search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/files')
-def list_files():
-    return jsonify(reddit_utils.get_saved_files_list())
 
-@app.route('/load/<filename>')
-def load_file(filename):
-    data = reddit_utils.load_data_from_json(filename)
-    if data:
-        return jsonify(data)
-    return jsonify({"error": "File not found"}), 404
 
 @app.route('/export/<filename>')
 def export_csv(filename):
