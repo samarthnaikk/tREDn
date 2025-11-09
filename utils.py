@@ -11,7 +11,7 @@ class RedditUtils:
     def __init__(self, data_directory="data"):
         self.base_url = "https://www.reddit.com"
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         self.data_dir = data_directory
         if not os.path.exists(self.data_dir):
@@ -22,29 +22,42 @@ class RedditUtils:
         search_url = f"{self.base_url}/search.json"
         
         request_params = {
-            "q": encoded_query,
+            "q": query,
             "sort": sort_method,
             "t": time_period,
-            "limit": min(post_limit, 100)
+            "limit": min(post_limit, 100),
+            "raw_json": 1
         }
         
         try:
+            print(f"Fetching from: {search_url}")
+            print(f"Parameters: {request_params}")
             response = requests.get(search_url, headers=self.headers, params=request_params)
+            print(f"Response status: {response.status_code}")
             response.raise_for_status()
+            data = response.json()
+            print(f"Data keys: {list(data.keys()) if data else 'None'}")
+            if data and 'data' in data:
+                print(f"Posts found: {len(data['data']['children'])}")
             time.sleep(1.2)
-            return response.json()
-        except requests.RequestException:
+            return data
+        except requests.RequestException as e:
+            print(f"Request error: {e}")
+            return None
+        except Exception as e:
+            print(f"Other error: {e}")
             return None
     
     def fetch_post_comments(self, subreddit_name, post_identifier):
         comments_url = f"{self.base_url}/r/{subreddit_name}/comments/{post_identifier}.json"
         
         try:
-            response = requests.get(comments_url, headers=self.headers)
+            response = requests.get(comments_url, headers=self.headers, params={"raw_json": 1})
             response.raise_for_status()
             time.sleep(1.2)
             return response.json()
-        except requests.RequestException:
+        except requests.RequestException as e:
+            print(f"Comment fetch error: {e}")
             return None
     
     def extract_post_data(self, raw_post_data):
@@ -69,10 +82,47 @@ class RedditUtils:
             "comment_date": datetime.fromtimestamp(raw_comment_data.get("created_utc", 0)).strftime("%Y-%m-%d %H:%M:%S")
         }
     
+    def try_subreddit_searches(self, query, sort_method="top", time_period="month", post_limit=25):
+        popular_subreddits = ["AskReddit", "explainlikeimfive", "todayilearned", "news", "technology", "science", "education"]
+        
+        for subreddit in popular_subreddits:
+            try:
+                search_url = f"{self.base_url}/r/{subreddit}/search.json"
+                request_params = {
+                    "q": query,
+                    "restrict_sr": "1",
+                    "sort": sort_method,
+                    "t": time_period,
+                    "limit": min(post_limit, 25),
+                    "raw_json": 1
+                }
+                
+                print(f"Trying subreddit r/{subreddit}")
+                response = requests.get(search_url, headers=self.headers, params=request_params)
+                response.raise_for_status()
+                data = response.json()
+                
+                if data and 'data' in data and data['data']['children']:
+                    print(f"Found {len(data['data']['children'])} posts in r/{subreddit}")
+                    return data
+                
+                time.sleep(1.2)
+            except Exception as e:
+                print(f"Error searching r/{subreddit}: {e}")
+                continue
+        
+        return None
+    
     def process_search_results(self, search_query, max_posts=10, sort_by="top", time_range="month"):
+        print(f"Processing search for: {search_query}")
         reddit_response = self.fetch_reddit_data(search_query, sort_by, time_range, max_posts)
         
+        if not reddit_response or "data" not in reddit_response or not reddit_response["data"]["children"]:
+            print("No results from general search, trying subreddit-specific searches...")
+            reddit_response = self.try_subreddit_searches(search_query, sort_by, time_range, max_posts)
+        
         if not reddit_response or "data" not in reddit_response:
+            print("No reddit response or no data key")
             return self.create_empty_result(search_query)
         
         processed_posts = []
@@ -109,7 +159,12 @@ class RedditUtils:
             "search_query": query,
             "search_timestamp": datetime.now().isoformat(),
             "posts": [],
-            "statistics": {}
+            "statistics": {
+                "total_posts": 0,
+                "total_upvotes": 0,
+                "total_comments": 0,
+                "average_score": 0
+            }
         }
     
     def create_final_result(self, query, posts_list):

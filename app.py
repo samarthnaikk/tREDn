@@ -21,10 +21,9 @@ def search():
     try:
         results = reddit_utils.process_search_results(query, num_posts, sort, time_filter)
         
-        if results["posts"]:
-            filename = reddit_utils.generate_safe_filename(query)
-            reddit_utils.save_data_as_json(results, filename)
-            results["saved_filename"] = f"{filename}.json"
+        filename = reddit_utils.generate_safe_filename(query)
+        reddit_utils.save_data_as_json(results, filename)
+        results["saved_filename"] = f"{filename}.json"
         
         return jsonify(results)
     except Exception as e:
