@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>tREDn - Reddit Topic Research</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>tREDn</h1>
+        <p>Reddit Topic Research and Data Navigator</p>
+    </div>
+
+    <div class="search-form">
+        <form id="searchForm">
+            <div class="form-group">
+                <label for="query">Search Query:</label>
+                <input type="text" id="query" name="query" placeholder="Enter topic to search..." required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="num_posts">Number of Posts:</label>
+                    <select id="num_posts" name="num_posts">
+                        <option value="5">5</option>
+                        <option value="10" selected>10</option>
+                        <option value="15">15</option>
+                        <option value="25">25</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sort">Sort By:</label>
+                    <select id="sort" name="sort">
+                        <option value="top" selected>Top</option>
+                        <option value="hot">Hot</option>
+                        <option value="new">New</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="time_filter">Time Period:</label>
+                    <select id="time_filter" name="time_filter">
+                        <option value="day">Day</option>
+                        <option value="week">Week</option>
+                        <option value="month" selected>Month</option>
+                        <option value="year">Year</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn">Search Reddit</button>
+        </form>
+    </div>
+
+    <div id="results" class="results" style="display: none;">
+        <div id="summary" class="summary"></div>
+        <div id="posts"></div>
+        <div class="export-section">
+            <button id="downloadCsv" class="btn btn-success">Download CSV</button>
+        </div>
+    </div>
+
+    <div class="files-section">
+        <h3>Saved Searches</h3>
+        <div id="filesList"></div>
+        <button onclick="loadFiles()" class="btn btn-secondary">Refresh Files</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
